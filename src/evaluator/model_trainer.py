@@ -73,7 +73,8 @@ class OFAModelTrainer:
         Args:
         data_loader (DataLoader): DataLoader for training data.
         """
-        self.data_changes.append(len(self.metrics_history["train_loss"][-1]))
+        if len(self.metrics_history["train_loss"]) >= 1:
+            self.data_changes.append(len(self.metrics_history["train_loss"][-1]))
         self.model.train()
 
         _losses, _metrics = [], {metric: [] for metric in self.custom_metrics}
@@ -159,7 +160,7 @@ class OFAModelTrainer:
             ax.set_xlabel("Step")
             ax.legend()
 
-        for change_step in self.data_changes[1:]:
+        for change_step in self.data_changes:
             for ax in axes:
                 ax.vlines(
                     x=change_step,
