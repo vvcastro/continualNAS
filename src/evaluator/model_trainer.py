@@ -127,12 +127,17 @@ class OFAModelTrainer:
         for metric_name, metric_values in _metrics.items():
             self.metrics_history[f"val_{metric_name}"].append(metric_values)
 
-    def plot_metrics(self):
+    def plot_metrics(self, figsize=(4, 5), dpi=500):
         """
         Plot the tracked metrics over epochs as subplots.
         """
         num_metrics = len(self.custom_metrics) + 1
-        fig, axes = plt.subplots(1, num_metrics, figsize=(4 * num_metrics, 5))
+        fig, axes = plt.subplots(
+            1,
+            num_metrics,
+            figsize=(figsize[0] * num_metrics, figsize[1]),
+            dpi=dpi,
+        )
 
         if num_metrics == 1:
             axes = [axes]
