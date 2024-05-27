@@ -14,7 +14,7 @@ from pymoo.factory import get_algorithm, get_crossover, get_mutation
 
 from surrogates.adaptative_switching import get_surrogate_predictor
 from evaluator.evaluator import OFAEvaluator, get_net_info
-from search_space.ofa import OFASearchSpace
+from search_space.ofa_space import OFASearchSpace
 import utils
 
 # from utils import prepare_eval_folder, MySampling, BinaryCrossover, MyMutation
@@ -36,13 +36,11 @@ class ContinualNAS:
         self.search_space = OFASearchSpace(family="mobilenetv3")
         self.surrogate_predictor = "as"
         self.initial_samples = 100
-        pass
 
     def sample_initial_set(self, n_iter):
         """
         Sample the initial architectures for the archive set.
         - Note: When `n_iter < 0` the problem transform to a random search
-        problem
         """
         if n_iter < 1:
             return self.search_space.sample(n_samples=self.initial_samples)
@@ -52,7 +50,7 @@ class ContinualNAS:
         sampled_archs = self.sample_initial_set(n_iter)
         eval_metrics = self._evaluate(sampled_archs)
 
-        # Here we initialise the archive set with all the metrics
+        # Initialise the archive set with all the metrics
         # from model evaluation
         online_archive = [info for info in zip(sampled_archs, eval_metrics)]
 

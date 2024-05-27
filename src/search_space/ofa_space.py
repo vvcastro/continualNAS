@@ -14,6 +14,7 @@ class OFASearchSpace:
     """
 
     def __init__(self, family: str):
+        self.family = family
         match family:
             case "mobilenetv3":
                 self.num_blocks = 5
@@ -49,35 +50,25 @@ class OFASearchSpace:
         _resolutions = self.input_resolutions if not resolutions else resolutions
 
         samples = []
-        for n in range(n_samples):
+        for _ in range(n_samples):
             sampled_depth = np.random.choice(_depths, _blocks, replace=True)
             sampled_resolution = np.random.choice(_resolutions)
 
-            # The other arguments are sampled depending on the number of layers
-            n_layers = sampled_depth.sum()
-            sampled_widths = np.random.choice(_widths, size=n_layers, replace=True)
-            sampled_ksizes = np.random.choice(_ksizes, size=n_layers, replace=True)
+            # The other arguments are sampled depth dependent
+            n_layers = sum(sampled_depth)
+            sampled_widths = np.random.choice(_widths, n_layers, replace=True)
+            sampled_ksizes = np.random.choice(_ksizes, n_layers, replace=True)
 
             # Append the sampled architecture
             samples.append(
                 {
-                    "resolution": int(sampled_resolution),
                     "depths": sampled_depth.tolist(),
                     "ksizes": sampled_ksizes.tolist(),
                     "widths": sampled_widths.tolist(),
+                    "resolution": int(sampled_resolution),
                 }
             )
         return samples
-
-    def zero_padding(self, values, depths):
-        """Pads the given values to the max depth available for the OFA model."""
-        padded_values, position = [], 0
-        for d in depths:
-            for _ in range(d):
-                padded_values.append(values[position])
-                position += 1
-            padded_values += [0] * (max(self.block_depths) - d)
-        return padded_values
 
     def encode(self, sample):
         """
@@ -136,14 +127,16 @@ class OFASearchSpace:
         for i in range(0, len(sample) - 1, encoded_block_size):
             n_layers = sample[i]
             depths.append(n_layers)
+
             ksizes.extend(sample[i + 1 : i + 1 + n_layers])
             widths.extend(sample[i + (1 + max_depth) : i + (1 + max_depth) + n_layers])
-        _resolution = self.input_resolutions[sample[-1]]
+
+        resolution = self.input_resolutions[sample[-1]]
         return {
-            "resolution": _resolution,
             "depths": depths,
             "ksizes": ksizes,
             "widths": widths,
+            "resolution": resolution,
         }
 
     def initialise(self, n_samples):
@@ -176,3 +169,25 @@ class OFASearchSpace:
             ksizes=[max(self.block_ksizes)],
             resolutions=[max(self.input_resolutions)],
         )[0]
+
+    def zero_padding(self, values: list, depths: list):
+        """
+        Pads the given values to the max depth available for the OFA model.
+        ## Params
+        - `values`: A flattened list with the values for each of the layers.
+        - `depths`: A list with the depth of each block.
+
+        ### Example:
+        ```python
+        depths = [2, 3, 1]
+        values = [3, 5, 3, 5, 7, 3]
+        expected = [3, 5, 0, 0, 3, 5, 7, 0, 3, 0, 0, 0]
+        ```
+        """
+        padded_values, position = [], 0
+        for d in depths:
+            for _ in range(d):
+                padded_values.append(values[position])
+                position += 1
+            padded_values += [0] * (max(self.block_depths) - d)
+        return padded_values

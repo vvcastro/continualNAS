@@ -3,4 +3,5 @@
 __pycache__/
 
 # Files
+assets/datasets/cifar10
 .DS_Store
