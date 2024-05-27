@@ -5,10 +5,10 @@ from torch.utils.data import Subset
 from typing import List, Tuple
 
 
-type Dataset = datasets.CIFAR10 | datasets.CIFAR100
+DatasetType = datasets.CIFAR10 | datasets.CIFAR100
 
 
-def stratified_train_test_split(dataset: Dataset, train_size: float = 0.8):
+def stratified_train_test_split(dataset: DatasetType, train_size: float = 0.8):
     """
     Split the dataset into train and test sets using a shuffled stratified approach.
 
@@ -28,7 +28,7 @@ def stratified_train_test_split(dataset: Dataset, train_size: float = 0.8):
     return train_subset, test_subset
 
 
-def select_classes(dataset: Dataset, classes: List[int]) -> Subset:
+def select_classes(dataset: DatasetType, classes: List[int]) -> Subset:
     """
     Select only certain classes from the dataset.
 
@@ -44,7 +44,7 @@ def select_classes(dataset: Dataset, classes: List[int]) -> Subset:
     return subset
 
 
-def transform_dataset(dataset: Dataset, resolution: Tuple[int, int]) -> Dataset:
+def transform_dataset(dataset: DatasetType, resolution: Tuple[int, int]) -> DatasetType:
     """
     Prepare the dataset by applying transformations.
 
