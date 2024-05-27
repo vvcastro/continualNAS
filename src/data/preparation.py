@@ -8,40 +8,49 @@ from typing import List, Tuple
 DatasetType = datasets.CIFAR10 | datasets.CIFAR100
 
 
-def stratified_train_test_split(dataset: DatasetType, train_size: float = 0.8):
+def prepare_continual_splits(
+    dataset: DatasetType, split_sizes: List[float], classes: List[int] = None
+) -> List[Subset]:
     """
-    Split the dataset into train and test sets using a shuffled stratified approach.
+    Split the dataset into multiple subsets based on the given sizes and optionally filter by classes.
 
     Args:
-    dataset: The dataset to split.
-    train_size (float): Proportion of the dataset to include in the train split.
+    dataset (CIFAR10): The dataset to split.
+    split_sizes (List[float]): The percentual sizes, from the original dataset, to give to each split.
+    classes (List[int], optional): List of class indices to include. Defaults to None.
 
     Returns:
-    [Subset, Subset]: Train and test subsets.
+    List[Subset]: List of filtered and split subsets.
     """
-    targets = dataset.targets
-    train_indices, test_indices = train_test_split(
-        range(len(targets)), train_size=train_size, stratify=targets, random_state=42
-    )
-    train_subset = Subset(dataset, train_indices)
-    test_subset = Subset(dataset, test_indices)
-    return train_subset, test_subset
+    if classes is not None:
+        # Filter the dataset by the specified classes
+        class_indices = [
+            i for i, label in enumerate(dataset.targets) if label in classes
+        ]
+        filtered_dataset = Subset(dataset, class_indices)
+    else:
+        filtered_dataset = dataset
 
+    targets = [filtered_dataset[i][1] for i in range(len(filtered_dataset))]
 
-def select_classes(dataset: DatasetType, classes: List[int]) -> Subset:
-    """
-    Select only certain classes from the dataset.
+    # Ensure the split sizes sum to 1.0
+    split_sizes = [size / sum(split_sizes) for size in split_sizes]
 
-    Args:
-    dataset: The dataset to filter.
-    classes (List[int]): List of class indices to include.
+    subsets = []
+    remaining_indices = list(range(len(targets)))
 
-    Returns:
-    Subset: Filtered subset of the dataset.
-    """
-    class_indices = [i for i, label in enumerate(dataset.targets) if label in classes]
-    subset = Subset(dataset, class_indices)
-    return subset
+    for split_size in split_sizes[:-1]:
+        split_length = int(len(targets) * split_size)
+        split_indices, remaining_indices = train_test_split(
+            remaining_indices,
+            train_size=split_length,
+            stratify=[targets[i] for i in remaining_indices],
+            random_state=42,
+        )
+        subsets.append(Subset(filtered_dataset, split_indices))
+
+    subsets.append(Subset(filtered_dataset, remaining_indices))
+    return subsets
 
 
 def transform_dataset(dataset: DatasetType, resolution: Tuple[int, int]) -> DatasetType:

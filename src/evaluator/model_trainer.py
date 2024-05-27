@@ -36,6 +36,7 @@ class OFAModelTrainer:
             **{f"train_{metric}": [] for metric in custom_metrics},
             **{f"val_{metric}": [] for metric in custom_metrics},
         }
+        self.data_changes = []
 
     def train(
         self,
@@ -72,6 +73,7 @@ class OFAModelTrainer:
         Args:
         data_loader (DataLoader): DataLoader for training data.
         """
+        self.data_changes.append(len(self.metrics_history["train_loss"]))
         self.model.train()
 
         _losses, _metrics = [], {metric: [] for metric in self.custom_metrics}
@@ -129,7 +131,7 @@ class OFAModelTrainer:
         Plot the tracked metrics over epochs as subplots.
         """
         num_metrics = len(self.custom_metrics) + 1
-        fig, axes = plt.subplots(num_metrics, 1, figsize=(10, 5 * num_metrics))
+        fig, axes = plt.subplots(1, num_metrics, figsize=(4 * num_metrics, 5))
 
         if num_metrics == 1:
             axes = [axes]
@@ -154,8 +156,18 @@ class OFAModelTrainer:
 
             ax.set_title(f"{metric_name} Over Epochs")
             ax.set_ylabel(metric_name)
-            ax.set_xlabel("Epochs")
+            ax.set_xlabel("Step")
             ax.legend()
+
+        for change_step in self.data_changes[1:]:
+            for ax in axes:
+                ax.vlines(
+                    x=change_step,
+                    ymin=0,
+                    ymax=1,
+                    color="black",
+                    linestyles="dashed",
+                )
 
         plt.tight_layout()
         plt.show()

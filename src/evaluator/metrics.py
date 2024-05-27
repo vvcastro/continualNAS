@@ -12,7 +12,7 @@ def binary_accuracy(outputs: torch.Tensor, labels: torch.Tensor) -> torch.Tensor
     Returns:
     torch.Tensor: Accuracy value.
     """
-    preds = torch.argmax(outputs)
+    preds = torch.argmax(outputs, axis=1)
     correct = (preds == labels).float()
     accuracy = correct.sum() / len(correct)
     return accuracy

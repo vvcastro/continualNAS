@@ -5,7 +5,7 @@ from src.evaluator.model_trainer import OFAModelTrainer
 
 from src.evaluator.evaluator import OFAEvaluator
 from src.data.preparation import (
-    select_classes,
+    prepare_continual_splits,
     transform_dataset,
 )
 
@@ -46,12 +46,18 @@ train_dataset = transform_dataset(train_dataset, sampled_architecture["resolutio
 prepared_dataset = transform_dataset(test_dataset, sampled_architecture["resolution"])
 
 # Step 3: Select specific classes for continual learning
-train_dataset = select_classes(train_dataset, classes=[0, 1])
-test_dataset = select_classes(test_dataset, classes=[0, 1])
+SPLIT_SIZES = [0.5, 0.5]
+train_datasets = prepare_continual_splits(
+    train_dataset,
+    split_sizes=SPLIT_SIZES,
+    classes=[0, 1],
+)
+test_datasets = prepare_continual_splits(
+    test_dataset,
+    split_sizes=SPLIT_SIZES,
+    classes=[0, 1],
+)
 
-# Create DataLoaders
-train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-val_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 
 # Step 5: Train the model
 print("(2) Training the model...")
@@ -60,13 +66,19 @@ trainer = OFAModelTrainer(model, custom_metrics=metrics)
 
 optimiser = optim.Adam(model.parameters())
 criterion = nn.CrossEntropyLoss()
-trainer.train(
-    train_loader,
-    val_loader,
-    optimiser,
-    criterion,
-    epochs=1,
-)
+
+for train_set, test_set in zip(train_datasets, test_datasets):
+    # Create DataLoaders
+    train_loader = DataLoader(train_set, batch_size=64, shuffle=True)
+    val_loader = DataLoader(test_set, batch_size=64, shuffle=False)
+
+    trainer.train(
+        train_loader,
+        val_loader,
+        optimiser,
+        criterion,
+        epochs=1,
+    )
 
 # Show training metrics.
 trainer.plot_metrics()
