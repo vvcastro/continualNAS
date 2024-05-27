@@ -9,8 +9,6 @@ import torch
 
 from typing import Callable, Dict
 
-from .utils import metric_smoothing
-
 
 class OFAModelTrainer:
     """
@@ -55,8 +53,7 @@ class OFAModelTrainer:
         epochs (int): Number of epochs to train for.
         """
 
-        if len(self.metrics_history["train_loss"]) >= 1:
-            self.data_changes.append(len(self.metrics_history["train_loss"][-1]))
+        self.data_changes.append(len(self.metrics_history["train_loss"]))
 
         for epoch in tqdm(range(epochs), desc="Training"):
             self.train_epoch(train_loader, optimiser, criterion)
@@ -151,13 +148,16 @@ class OFAModelTrainer:
             val_metric = self.metrics_history[f"val_{metric_name}"]
 
             # Plot split metrics maintaining colors
-            flattened_train = np.concatenate(train_metric, axis=0)
-            flattened_val = np.concatenate(val_metric, axis=0)
-            diff_factor = len(flattened_train) / len(flattened_val)
+            flattened_train = np.concatenate(
+                [np.mean(e_metric) for e_metric in train_metric], axis=0
+            )
+            flattened_val = np.concatenate(
+                [np.mean(e_metric) for e_metric in val_metric], axis=0
+            )
 
             # Comute the ranges for the plotting
             train_range = np.arange(len(flattened_train))
-            val_range = np.arange(len(flattened_val)) * diff_factor
+            val_range = np.arange(len(flattened_val))
 
             ax.plot(train_range, flattened_train, label="Train")
             ax.plot(val_range, flattened_val, label="Validation")
@@ -172,7 +172,7 @@ class OFAModelTrainer:
                 ax.set_ylim((0, 0.25))
             ax.legend()
 
-        for change_step in self.data_changes:
+        for change_step in self.data_changes[1:]:
             for ax in axes:
                 ax.vlines(
                     x=change_step,
