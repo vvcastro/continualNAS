@@ -21,7 +21,7 @@ class OFASearchSpace:
                 self.block_depths = [2, 3, 4]
                 self.block_widths = [3, 4, 6]
                 self.block_ksizes = [3, 5, 7]
-                self.input_resolutions = list(range(192, 257, 4))
+                self.input_resolutions = list(range(128, 224, 4))
             case _:
                 raise KeyError(f"OFA family type: '{family}' not implemented!")
 
