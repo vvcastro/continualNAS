@@ -54,6 +54,10 @@ class OFAModelTrainer:
         val_loader (DataLoader): DataLoader for validation data.
         epochs (int): Number of epochs to train for.
         """
+
+        if len(self.metrics_history["train_loss"]) >= 1:
+            self.data_changes.append(len(self.metrics_history["train_loss"][-1]))
+
         for epoch in tqdm(range(epochs), desc="Training"):
             self.train_epoch(train_loader, optimiser, criterion)
             self.validate_epoch(val_loader, criterion)
@@ -73,8 +77,6 @@ class OFAModelTrainer:
         Args:
         data_loader (DataLoader): DataLoader for training data.
         """
-        if len(self.metrics_history["train_loss"]) >= 1:
-            self.data_changes.append(len(self.metrics_history["train_loss"][-1]))
         self.model.train()
 
         _losses, _metrics = [], {metric: [] for metric in self.custom_metrics}
