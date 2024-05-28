@@ -54,11 +54,11 @@ training_dataset = transform_dataset(
 
 # Step 3: Select specific classes for continual learning
 SPLIT_SIZES = [0.5, 0.3, 0.2]
-training_datasets = splits_continual_data(
+training_splits = splits_continual_data(
     training_dataset,
     split_sizes=SPLIT_SIZES,
 )
-testing_datasets = splits_continual_data(
+testing_splits = splits_continual_data(
     testing_dataset,
     split_sizes=SPLIT_SIZES,
 )
@@ -80,10 +80,10 @@ LEARNING_RATE = 1e-3
 base_optimiser = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 criterion = nn.CrossEntropyLoss()
 
-iterator = zip(EPOCHS, training_datasets, testing_datasets)
-for epochs, training_split, testing_split in iterator:
-    training_loader = DataLoader(training_split, batch_size=BATCH_SIZE, shuffle=True)
-    validation_loader = DataLoader(testing_split, batch_size=BATCH_SIZE, shuffle=False)
+iterator = zip(EPOCHS, training_splits, testing_splits)
+for epochs, train_split, test_split in iterator:
+    training_loader = DataLoader(train_split, batch_size=BATCH_SIZE, shuffle=True)
+    validation_loader = DataLoader(test_split, batch_size=BATCH_SIZE, shuffle=False)
 
     trainer.train(
         training_loader,
@@ -92,6 +92,7 @@ for epochs, training_split, testing_split in iterator:
         criterion,
         epochs=epochs,
     )
+    print("=" * 30)
 
 # Show training metrics.
 trainer.plot_metrics()

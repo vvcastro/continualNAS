@@ -161,6 +161,9 @@ class OFAModelTrainer:
             ax.set_title(f"{metric_name} | Epochs")
             ax.set_ylabel(metric_name)
             ax.set_xlabel("Step")
+
+            if metric_name != "loss":
+                ax.set_ylim((0.65, 1))
             ax.legend()
 
         for change_step in self.data_changes[1:]:
