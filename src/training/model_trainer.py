@@ -56,9 +56,9 @@ class OFAModelTrainer:
 
         self.data_changes.append(len(self.metrics_history["train_loss"]))
 
-        for epoch in tqdm(range(epochs), desc="Training"):
+        for epoch in range(epochs):
             self.train_epoch(train_loader, optimiser, criterion)
-            self.print_epoch_metrics(epoch, phase="train")
+            self.print_epoch_metrics(epoch, split=None)
 
             for split_key, split_loader in val_loaders.items():
                 losses, metrics = self.validate_epoch(split_loader, criterion)
@@ -84,7 +84,7 @@ class OFAModelTrainer:
         self.model.train()
 
         _losses, _metrics = [], {metric: [] for metric in self.custom_metrics}
-        for inputs, labels in data_loader:
+        for inputs, labels in tqdm(data_loader, desc="Training"):
             inputs, labels = inputs.to(self.device), labels.to(self.device)
 
             # Optimisation step
