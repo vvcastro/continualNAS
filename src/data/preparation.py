@@ -76,5 +76,5 @@ def transform_dataset(
             transforms.Normalize(mean=norm_mean, std=norm_std),
         ]
     )
-    dataset.transform = transform
+    dataset.transform = transforms.Compose(transform)
     return dataset
