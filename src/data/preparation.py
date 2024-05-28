@@ -63,18 +63,21 @@ def transform_dataset(
     norm_mean = [0.49139968, 0.48215827, 0.44653124]
     norm_std = [0.24703233, 0.24348505, 0.26158768]
 
-    transform = []
     if train:
-        transform = [
+        image_transformation = [
             transforms.RandomResizedCrop(resolution, scale=(0.08, 1)),
             transforms.RandomHorizontalFlip(p=0.5),
         ]
+    else:
+        image_transformation = [
+            transforms.Resize(resolution),
+        ]
 
-    transform.extend(
+    image_transformation.extend(
         [
             transforms.ToTensor(),
             transforms.Normalize(mean=norm_mean, std=norm_std),
         ]
     )
-    dataset.transform = transforms.Compose(transform)
+    dataset.transform = transforms.Compose(image_transformation)
     return dataset
