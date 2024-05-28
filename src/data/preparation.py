@@ -1,7 +1,9 @@
-from sklearn.model_selection import train_test_split
 from torchvision import datasets, transforms
-from torch.utils.data import Subset
+from torch.utils.data import Dataset, Subset, random_split
 from copy import deepcopy
+
+
+import torch
 
 from typing import List, Tuple
 
@@ -9,8 +11,10 @@ from typing import List, Tuple
 DatasetType = datasets.CIFAR10 | datasets.CIFAR100
 
 
-def splits_continual_data(
-    dataset: DatasetType, split_sizes: List[float], classes: List[int] = None
+def continual_random_splits(
+    dataset: DatasetType,
+    split_sizes: List[float],
+    random_seed: int = 42,
 ) -> List[Subset]:
     """
     Split the dataset into multiple disjoint subsets based on the given percentual sizes.
@@ -22,26 +26,15 @@ def splits_continual_data(
     Returns:
     List[Subset]: List of filtered and split subsets.
     """
+
     # Ensure the split sizes sum to 1.0
     split_sizes = [size / sum(split_sizes) for size in split_sizes]
 
-    # For stratified splits.
-    targets = [dataset[i][1] for i in range(len(dataset))]
+    # For replicability
+    permutator = torch.Generator().manual_seed(random_seed)
 
-    subsets = []
-    remaining_indices = list(range(len(targets)))
-    for split_size in split_sizes[:-1]:
-        split_length = int(len(targets) * split_size)
-        split_indices, remaining_indices = train_test_split(
-            remaining_indices,
-            train_size=split_length,
-            stratify=[targets[i] for i in remaining_indices],
-            random_state=42,
-        )
-        subsets.append(Subset(dataset, split_indices))
-
-    subsets.append(Subset(dataset, remaining_indices))
-    return subsets
+    # Split the datasets
+    return random_split(dataset, split_sizes, generator=permutator)
 
 
 def transform_dataset(
@@ -59,7 +52,6 @@ def transform_dataset(
     Returns:
     datasets.CIFAR10: Transformed dataset.
     """
-    work_dataset = deepcopy(dataset)
 
     # Default values for CIFAR10
     norm_mean = [0.49139968, 0.48215827, 0.44653124]
@@ -81,5 +73,22 @@ def transform_dataset(
             transforms.Normalize(mean=norm_mean, std=norm_std),
         ]
     )
-    work_dataset.transform = transforms.Compose(image_transformation)
-    return work_dataset
+    transformation = transforms.Compose(image_transformation)
+    return TransformDataset(deepcopy(dataset), transform=transformation)
+
+
+class TransformDataset(Dataset):
+    """Custom class to implement transformation in `Subsets` of the dataset."""
+
+    def __init__(self, subset, transform=None):
+        self.subset = subset
+        self.transform = transform
+
+    def __getitem__(self, index):
+        x, y = self.subset[index]
+        if self.transform:
+            x = self.transform(x)
+        return x, y
+
+    def __len__(self):
+        return len(self.subset)

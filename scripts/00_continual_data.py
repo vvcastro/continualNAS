@@ -7,7 +7,7 @@ from src.training.evaluator import OFAEvaluator
 from src.training.utils import SAM
 
 from src.data.preparation import (
-    splits_continual_data,
+    continual_random_splits,
     transform_dataset,
 )
 
@@ -48,7 +48,7 @@ SPLIT_SIZES = [0.5, 0.3, 0.2]
 continual_splits = {
     f"split-{i}": split
     for i, split in enumerate(
-        splits_continual_data(train_dataset, split_sizes=SPLIT_SIZES)
+        continual_random_splits(train_dataset, split_sizes=SPLIT_SIZES)
     )
 }
 
