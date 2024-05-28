@@ -1,15 +1,16 @@
 from _configs import CIFAR10_DATA_DIR, OFA_MODEL_PATH
 
 from src.search_space.ofa_space import OFASearchSpace
-from src.evaluator.model_trainer import OFAModelTrainer
 
-from src.evaluator.evaluator import OFAEvaluator
+from src.training.model_trainer import OFAModelTrainer
+from src.training.metrics import binary_accuracy
+from src.training.evaluator import OFAEvaluator
+from src.training.utils import SAM
+
 from src.data.preparation import (
     splits_continual_data,
     transform_dataset,
 )
-
-from src.evaluator.metrics import binary_accuracy
 
 
 from ofa.imagenet_classification.elastic_nn.modules.dynamic_op import (
@@ -72,26 +73,24 @@ trainer = OFAModelTrainer(model, custom_metrics=metrics)
 ##### PARAMS TO VARY
 ## batch_size = 64
 ## learning_rate = 1e-3
-
+EPOCHS = [5, 3, 2]
 BATCH_SIZE = 64
 LEARNING_RATE = 1e-3
 
 base_optimiser = optim.Adam(model.parameters(), lr=LEARNING_RATE)
-optimiser = optim.lr_scheduler.CosineAnnealingLR(base_optimiser)
-
 criterion = nn.CrossEntropyLoss()
 
-for train_set, test_set in zip(training_datasets, testing_datasets):
-    # Create DataLoaders
-    train_loader = DataLoader(train_set, batch_size=64, shuffle=True)
-    val_loader = DataLoader(test_set, batch_size=64, shuffle=False)
+iterator = zip(EPOCHS, training_datasets, testing_dataset)
+for epochs, training_split, testing_split in iterator:
+    training_loader = DataLoader(training_split, batch_size=BATCH_SIZE, shuffle=True)
+    validation_loader = DataLoader(testing_split, batch_size=BATCH_SIZE, shuffle=False)
 
     trainer.train(
-        train_loader,
-        val_loader,
-        optimiser,
+        training_loader,
+        validation_loader,
+        base_optimiser,
         criterion,
-        epochs=1,
+        epochs=epochs,
     )
 
 # Show training metrics.
