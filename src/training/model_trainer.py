@@ -1,3 +1,4 @@
+from collections import defaultdict
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import numpy as np
@@ -7,7 +8,7 @@ import torch.optim as optim
 import torch.nn as nn
 import torch
 
-from typing import Callable, Dict
+from typing import Callable, Dict, List
 
 
 class OFAModelTrainer:
@@ -30,16 +31,16 @@ class OFAModelTrainer:
         self.custom_metrics = custom_metrics if custom_metrics else {}
         self.metrics_history = {
             "train_loss": [],
-            "val_loss": [],
             **{f"train_{metric}": [] for metric in custom_metrics},
-            **{f"val_{metric}": [] for metric in custom_metrics},
+            "val_loss": defaultdict(list),
+            **{f"val_{metric}": defaultdict(list) for metric in custom_metrics},
         }
         self.data_changes = []
 
     def train(
         self,
         train_loader: DataLoader,
-        val_loader: DataLoader,
+        val_loaders: Dict[str, DataLoader],
         optimiser: optim.Optimizer,
         criterion: Callable,
         epochs: int = 10,
@@ -57,10 +58,16 @@ class OFAModelTrainer:
 
         for epoch in tqdm(range(epochs), desc="Training"):
             self.train_epoch(train_loader, optimiser, criterion)
-            self.validate_epoch(val_loader, criterion)
-
             self.print_epoch_metrics(epoch, phase="train")
-            self.print_epoch_metrics(epoch, phase="val")
+
+            for split_key, split_loader in val_loaders.items():
+                losses, metrics = self.validate_epoch(split_loader, criterion)
+
+                self.metrics_history["val_loss"][split_key].append(losses)
+                for mname, mvalues in metrics.items():
+                    self.metrics_history[f"val_{mname}"][split_key].append(mvalues)
+
+                self.print_epoch_metrics(epoch, split=split_key)
 
     def train_epoch(
         self,
@@ -121,10 +128,7 @@ class OFAModelTrainer:
                 for metric_name, metric_fn in self.custom_metrics.items():
                     _metrics[metric_name].append(metric_fn(outputs, labels).item())
 
-        # Add metrics grouped by epoochs
-        self.metrics_history["val_loss"].append(_losses)
-        for metric_name, metric_values in _metrics.items():
-            self.metrics_history[f"val_{metric_name}"].append(metric_values)
+        return _losses, _metrics
 
     def plot_metrics(self, figsize=(4, 5), dpi=500):
         """
@@ -144,19 +148,18 @@ class OFAModelTrainer:
         for idx, metric_name in enumerate(["loss"] + list(self.custom_metrics.keys())):
             ax = axes[idx]
 
+            # Show training metrics
             train_metric = self.metrics_history[f"train_{metric_name}"]
-            val_metric = self.metrics_history[f"val_{metric_name}"]
-
-            # Plot split metrics maintaining colors
             flattened_train = [np.mean(e_metric) for e_metric in train_metric]
-            flattened_val = [np.mean(e_metric) for e_metric in val_metric]
-
-            # Comute the ranges for the plotting
             train_range = np.arange(len(flattened_train)) + 1
-            val_range = np.arange(len(flattened_val)) + 1
-
             ax.plot(train_range, flattened_train, label="Train")
-            ax.plot(val_range, flattened_val, label="Validation")
+
+            # Show validation metrics
+            val_metric = self.metrics_history[f"val_{metric_name}"]
+            for split_key in val_metric:
+                flattened_val = [np.mean(emetric) for emetric in val_metric[split_key]]
+                val_range = np.arange(len(flattened_val)) + 1
+                ax.plot(val_range, flattened_val, label=split_key)
 
             ax.set_title(f"{metric_name} | Epochs")
             ax.set_ylabel(metric_name)
@@ -169,7 +172,7 @@ class OFAModelTrainer:
         for change_step in self.data_changes[1:]:
             for ax in axes:
                 ax.vlines(
-                    x=change_step,
+                    x=change_step + 0.5,
                     ymin=0,
                     ymax=1,
                     color="black",
@@ -179,14 +182,18 @@ class OFAModelTrainer:
         plt.tight_layout()
         plt.show()
 
-    def print_epoch_metrics(self, epoch: int, phase: str = "train"):
+    def print_epoch_metrics(
+        self,
+        epoch: int,
+        split: str | None = None,
+    ):
         """
         Print metrics for a given epoch.
 
         Args:
         epoch (int): Epoch number.
-        phase (str): Phase of metrics to print ('train' or 'val').
         """
+        phase = "val" if split is not None else "train"
         loss_key = f"{phase}_loss"
         metrics_keys = [
             key
@@ -195,17 +202,21 @@ class OFAModelTrainer:
         ]
 
         # Aggregate metrics for the epoch
-        aggregated_loss = sum(self.metrics_history[loss_key][-1]) / len(
-            self.metrics_history[loss_key][-1]
-        )
-        aggregated_metrics = {
-            k: sum(self.metrics_history[k][-1]) / len(self.metrics_history[k][-1])
-            for k in metrics_keys
-        }
+        if phase == "val":
+            losses = self.metrics_history[loss_key][split][-1]
+            metrics = {k: self.metrics_history[k][split][-1] for k in metrics_keys}
+        else:
+            losses = self.metrics_history[loss_key][-1]
+            metrics = {k: self.metrics_history[k][-1] for k in metrics_keys}
+
+        aggregated_metrics = {k: sum(metrics[k]) / len(metrics[k]) for k in metrics}
+        aggregated_loss = sum(losses) / len(losses)
 
         metrics_str = ", ".join(
             [f"{key}: {aggregated_metrics[key]:.6f}" for key in metrics_keys]
         )
+
+        id_string = f"{phase.capitalize()}" + f" - {split}" if split is not None else ""
         print(
-            f"Epoch {epoch + 1}, {phase.capitalize()} Loss: {aggregated_loss:.6f}, Metrics: {metrics_str}"
+            f"{id_string} Epoch {epoch + 1}| Loss: {aggregated_loss:.6f}, Metrics: {metrics_str}"
         )

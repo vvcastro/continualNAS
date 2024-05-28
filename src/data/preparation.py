@@ -1,6 +1,7 @@
 from sklearn.model_selection import train_test_split
 from torchvision import datasets, transforms
 from torch.utils.data import Subset
+from copy import deepcopy
 
 from typing import List, Tuple
 
@@ -58,6 +59,7 @@ def transform_dataset(
     Returns:
     datasets.CIFAR10: Transformed dataset.
     """
+    work_dataset = deepcopy(dataset)
 
     # Default values for CIFAR10
     norm_mean = [0.49139968, 0.48215827, 0.44653124]
@@ -79,5 +81,5 @@ def transform_dataset(
             transforms.Normalize(mean=norm_mean, std=norm_std),
         ]
     )
-    dataset.transform = transforms.Compose(image_transformation)
-    return dataset
+    work_dataset.transform = transforms.Compose(image_transformation)
+    return work_dataset
