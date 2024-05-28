@@ -80,7 +80,7 @@ LEARNING_RATE = 1e-3
 base_optimiser = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 criterion = nn.CrossEntropyLoss()
 
-iterator = zip(EPOCHS, training_datasets, testing_dataset)
+iterator = zip(EPOCHS, training_datasets, testing_datasets)
 for epochs, training_split, testing_split in iterator:
     training_loader = DataLoader(training_split, batch_size=BATCH_SIZE, shuffle=True)
     validation_loader = DataLoader(testing_split, batch_size=BATCH_SIZE, shuffle=False)

@@ -148,28 +148,19 @@ class OFAModelTrainer:
             val_metric = self.metrics_history[f"val_{metric_name}"]
 
             # Plot split metrics maintaining colors
-            flattened_train = np.concatenate(
-                [np.mean(e_metric) for e_metric in train_metric], axis=0
-            )
-            flattened_val = np.concatenate(
-                [np.mean(e_metric) for e_metric in val_metric], axis=0
-            )
+            flattened_train = [np.mean(e_metric) for e_metric in train_metric]
+            flattened_val = [np.mean(e_metric) for e_metric in val_metric]
 
             # Comute the ranges for the plotting
-            train_range = np.arange(len(flattened_train))
-            val_range = np.arange(len(flattened_val))
+            train_range = np.arange(len(flattened_train)) + 1
+            val_range = np.arange(len(flattened_val)) + 1
 
             ax.plot(train_range, flattened_train, label="Train")
             ax.plot(val_range, flattened_val, label="Validation")
 
-            ax.set_title(f"{metric_name} Over Epochs")
+            ax.set_title(f"{metric_name} | Epochs")
             ax.set_ylabel(metric_name)
             ax.set_xlabel("Step")
-
-            if metric_name != "loss":
-                ax.set_ylim((0.75, 1))
-            else:
-                ax.set_ylim((0, 0.25))
             ax.legend()
 
         for change_step in self.data_changes[1:]:
