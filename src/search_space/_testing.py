@@ -1,10 +1,10 @@
-from ofa import OFASearchSpace
+from ofa_space import OFASearchSpaceWithExpansions
 import unittest
 
 
 class TestOFASearchSpace(unittest.TestCase):
     def setUp(self):
-        self.ofa_search_space = OFASearchSpace(family="mobilenetv3")
+        self.ofa_search_space = OFASearchSpaceWithExpansions(family="mobilenetv3")
 
     def test_sampling(self):
         samples = self.ofa_search_space.sample(n_samples=10)

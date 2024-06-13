@@ -1,47 +1,16 @@
-from torchvision import datasets, transforms
-from torch.utils.data import Dataset, Subset, random_split
+from torch.utils.data import Dataset
+from torchvision import transforms
 from copy import deepcopy
+from typing import Tuple
 
-
-import torch
-
-from typing import List, Tuple
-
-
-DatasetType = datasets.CIFAR10 | datasets.CIFAR100
-
-
-def continual_random_splits(
-    dataset: DatasetType,
-    split_sizes: List[float],
-    random_seed: int = 42,
-) -> List[Subset]:
-    """
-    Split the dataset into multiple disjoint subsets based on the given percentual sizes.
-
-    Args:
-    dataset (CIFAR10): The dataset to split.
-    split_sizes (List[float]): The percentual sizes, from the original dataset, to give to each split.
-
-    Returns:
-    List[Subset]: List of filtered and split subsets.
-    """
-
-    # Ensure the split sizes sum to 1.0
-    split_sizes = [size / sum(split_sizes) for size in split_sizes]
-
-    # For replicability
-    permutator = torch.Generator().manual_seed(random_seed)
-
-    # Split the datasets
-    return random_split(dataset, split_sizes, generator=permutator)
+from .datasets import TransformedDataset
 
 
 def transform_dataset(
-    dataset: DatasetType,
+    dataset: Dataset,
     resolution: Tuple[int, int],
-    train: bool = False,
-) -> DatasetType:
+    augment: bool = False,
+) -> Dataset:
     """
     Prepare the dataset by applying transformations.
 
@@ -57,7 +26,7 @@ def transform_dataset(
     norm_mean = [0.49139968, 0.48215827, 0.44653124]
     norm_std = [0.24703233, 0.24348505, 0.26158768]
 
-    if train:
+    if augment:
         image_transformation = [
             transforms.RandomResizedCrop(resolution, scale=(0.08, 1)),
             transforms.RandomHorizontalFlip(p=0.5),
@@ -74,21 +43,4 @@ def transform_dataset(
         ]
     )
     transformation = transforms.Compose(image_transformation)
-    return TransformDataset(deepcopy(dataset), transform=transformation)
-
-
-class TransformDataset(Dataset):
-    """Custom class to implement transformation in `Subsets` of the dataset."""
-
-    def __init__(self, subset, transform=None):
-        self.subset = subset
-        self.transform = transform
-
-    def __getitem__(self, index):
-        x, y = self.subset[index]
-        if self.transform:
-            x = self.transform(x)
-        return x, y
-
-    def __len__(self):
-        return len(self.subset)
+    return TransformedDataset(deepcopy(dataset), transform=transformation)

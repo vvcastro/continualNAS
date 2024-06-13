@@ -3,73 +3,27 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 import numpy as np
 
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 import torch.optim as optim
 import torch.nn as nn
 import torch
 
 from typing import Callable, Dict, List
+from abc import ABC, abstractmethod
+
+from src.data.preparation import (
+    continual_random_splits,
+    transform_dataset,
+)
 
 
-class OFAModelTrainer:
-    """
-    Class to handle training of a model with custom metrics tracking.
-
-    Attributes:
-    model (torch.nn.Module): The model to be trained.
-    criterion (Callable): Loss function.
-    optimizer (torch.optim.Optimizer): Optimizer for training.
-    custom_metrics (Dict[str, Callable]): Dictionary of custom metrics to track during training.
-    device (str): Device to run training on, default is 'cuda'.
-    """
-
-    def __init__(self, model: nn.Module, custom_metrics: Dict[str, Callable] = None):
+class ModelTrainer(ABC):
+    def __init__(self, model: nn.Module):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = model.to(self.device)
-
-        # Track training metrics
-        self.custom_metrics = custom_metrics if custom_metrics else {}
-        self.metrics_history = {
-            "train_loss": [],
-            **{f"train_{metric}": [] for metric in custom_metrics},
-            "val_loss": defaultdict(list),
-            **{f"val_{metric}": defaultdict(list) for metric in custom_metrics},
-        }
-        self.data_changes = []
+        self.custom_metrics = {}
 
     def train(
-        self,
-        train_loader: DataLoader,
-        val_loaders: Dict[str, DataLoader],
-        optimiser: optim.Optimizer,
-        criterion: Callable,
-        epochs: int = 10,
-    ):
-        """
-        Train the model and validate at the end of each epoch, tracking custom metrics.
-
-        Args:
-        train_loader (DataLoader): DataLoader for training data.
-        val_loader (DataLoader): DataLoader for validation data.
-        epochs (int): Number of epochs to train for.
-        """
-
-        self.data_changes.append(len(self.metrics_history["train_loss"]))
-
-        for epoch in range(epochs):
-            self.train_epoch(train_loader, optimiser, criterion)
-            self.print_epoch_metrics(epoch, split=None)
-
-            for split_key, split_loader in val_loaders.items():
-                losses, metrics = self.validate_epoch(split_loader, criterion)
-
-                self.metrics_history["val_loss"][split_key].append(losses)
-                for mname, mvalues in metrics.items():
-                    self.metrics_history[f"val_{mname}"][split_key].append(mvalues)
-
-                self.print_epoch_metrics(epoch, split=split_key)
-
-    def train_epoch(
         self,
         data_loader: DataLoader,
         optimiser: optim.Optimizer,
@@ -99,12 +53,13 @@ class OFAModelTrainer:
             for metric_name, metric_fn in self.custom_metrics.items():
                 _metrics[metric_name].append(metric_fn(outputs, labels).item())
 
-        # Add metrics grouped by epoochs
-        self.metrics_history["train_loss"].append(_losses)
-        for metric_name, metric_values in _metrics.items():
-            self.metrics_history[f"train_{metric_name}"].append(metric_values)
+        return _losses, _metrics
 
-    def validate_epoch(self, data_loader: DataLoader, criterion: Callable):
+    def validate(
+        self,
+        data_loader: DataLoader,
+        criterion: Callable,
+    ):
         """
         Perform a single validation epoch.
 
@@ -130,15 +85,121 @@ class OFAModelTrainer:
 
         return _losses, _metrics
 
-    def plot_metrics(self, figsize=(4, 5), dpi=500):
+    @abstractmethod
+    def prepare_datasets(self):
+        pass
+
+    @abstractmethod
+    def evaluate(self, optimiser, criterion, epochs: int):
+        pass
+
+
+class DataContinualTrainer(ModelTrainer):
+    """
+    Class to handle training of a model with a Data Continual primitive.
+
+    Attributes:
+    model (torch.nn.Module): The model to be trained.
+    dataset (torch.utils.data.Dataset): The dataset to be used in the continual setting.
+    custom_metrics (Dict[str, Callable]): Dict of Custom metrics to track during training.
+    """
+
+    def __init__(
+        self,
+        model: nn.Module,
+        dataset: Dataset,
+        custom_metrics: Dict[str, Callable] = None,
+    ):
+        super().__init__(model)
+
+        # Prepare the dataset
+        self.base_dataset = dataset
+        self.prepare_dataset()
+
+        # Track training metrics
+        self.custom_metrics = custom_metrics if custom_metrics else {}
+        self.metrics_history = {
+            "train_loss": [],
+            **{f"train_{metric}": [] for metric in custom_metrics},
+            "val_loss": defaultdict(list),
+            **{f"val_{metric}": defaultdict(list) for metric in custom_metrics},
+        }
+        self.data_changes = []
+
+    def prepare_datasets(self, img_size: int):
+        SPLIT_SIZES = [0.5, 0.3, 0.2]
+        continual_splits = {
+            f"split-{i}": split
+            for i, split in enumerate(
+                continual_random_splits(self.base_dataset, split_sizes=SPLIT_SIZES)
+            )
+        }
+
+        # Step 3. Prepare the training dataset with augmentation
+        training_datasets = {
+            key: transform_dataset(data, img_size, train=True)
+            for key, data in continual_splits.items()
+        }
+
+        # Step 4. Build the validation data loaders
+        validation_loaders = {
+            key: DataLoader(
+                transform_dataset(data, img_size),
+                batch_size=64,
+                shuffle=False,
+            )
+            for key, data in continual_splits.items()
+        }
+
+    def train(
+        self,
+        train_loader: DataLoader,
+        val_loaders: Dict[str, DataLoader],
+        optimiser: optim.Optimizer,
+        criterion: Callable,
+        epochs: int = 10,
+    ):
+        """
+        Train the model and validate at the end of each epoch, tracking custom metrics.
+
+        Args:
+        train_loader (DataLoader): DataLoader for training data.
+        val_loader (DataLoader): DataLoader for validation data.
+        epochs (int): Number of epochs to train for.
+        """
+
+        self.data_changes.append(len(self.metrics_history["train_loss"]))
+
+        for epoch in range(epochs):
+            train_losses, train_metrics = self.train_epoch(
+                train_loader, optimiser, criterion
+            )
+
+            # Add metrics grouped by epoochs
+            self.metrics_history["train_loss"].append(train_losses)
+            for metric_name, metric_values in train_metrics.items():
+                self.metrics_history[f"train_{metric_name}"].append(metric_values)
+
+            self.print_epoch_metrics(epoch, split=None)
+
+            for split_key, split_loader in val_loaders.items():
+                losses, metrics = self.validate_epoch(split_loader, criterion)
+
+                self.metrics_history["val_loss"][split_key].append(losses)
+                for mname, mvalues in metrics.items():
+                    self.metrics_history[f"val_{mname}"][split_key].append(mvalues)
+
+                self.print_epoch_metrics(epoch, split=split_key)
+
+    def plot_metrics(self, figsize=(8, 5), dpi=500):
         """
         Plot the tracked metrics over epochs as subplots.
         """
         num_metrics = len(self.custom_metrics) + 1
         fig, axes = plt.subplots(
-            1,
             num_metrics,
-            figsize=(figsize[0] * num_metrics, figsize[1]),
+            1,
+            figsize=(figsize[0], figsize[1] * num_metrics),
             dpi=dpi,
         )
 
@@ -216,7 +277,9 @@ class OFAModelTrainer:
             [f"{key}: {aggregated_metrics[key]:.6f}" for key in metrics_keys]
         )
 
-        id_string = f"{phase.capitalize()}" + f" - {split}" if split is not None else ""
+        id_string = f"{phase.capitalize()}" + (
+            f" - {split}" if split is not None else ""
+        )
         print(
-            f"{id_string} Epoch {epoch + 1}| Loss: {aggregated_loss:.6f}, Metrics: {metrics_str}"
+            f"{id_string} Epoch {epoch + 1}| Loss: {aggregated_loss:.6f}, {metrics_str}"
         )

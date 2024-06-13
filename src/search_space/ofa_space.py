@@ -1,11 +1,16 @@
 import numpy as np
 
 
-class OFASearchSpace:
+class OFASearchSpaceWithExpansions:
     """
-    Defines the OFA net search space.
-    Some standard descriptors:
-    @params
+    Defines the OFA net search space. The enconded representation of an
+    architecture presents an initial vector with the settings for the model, plus
+    a few extra bits for the expansion direction.
+
+    ## Arguments
+    These refer to the attributes for the "Maximal Possible Model" under this
+    search space.
+
     - `num_blocks`: max number of units in the CNN sequence.
     - `block_depths`: number of layers on each block.
     - `block_widths`: expansion rate for the number of channels on each layer.
@@ -35,7 +40,14 @@ class OFASearchSpace:
         resolutions: int | None = None,
     ):
         """
-        Randombly sample an architecture from the maximal OFA.
+        Randombly sample an architecture from the constraint OFA.
+
+        The maximal model we can sample is constraint, so the sampled
+        model + the scaling direction always lies inside the OFASearchSpace.
+
+        The direction is sampled in a way that tells how much we are moving
+        in the space of `block_X`.
+
         @params:
         - (n_blocks, kernel_size, exp_rate, depth, resolution)
         @returns
@@ -51,21 +63,34 @@ class OFASearchSpace:
 
         samples = []
         for _ in range(n_samples):
-            sampled_depth = np.random.choice(_depths, _blocks, replace=True)
             sampled_resolution = np.random.choice(_resolutions)
 
-            # The other arguments are sampled depth dependent
-            n_layers = sum(sampled_depth)
-            sampled_widths = np.random.choice(_widths, n_layers, replace=True)
-            sampled_ksizes = np.random.choice(_ksizes, n_layers, replace=True)
+            # Sample the non-contraint parth of the model depth
+            free_depths = np.random.choice(_depths, _blocks - 1, replace=True)
+            free_widths = np.random.choice(_widths, sum(free_depths), replace=True)
+            free_ksizes = np.random.choice(_ksizes, sum(free_depths), replace=True)
+
+            # Sample the last block ensuring it can be expanded.
+            cdepth = np.random.choice(_depths[:-1], 1, replace=True)
+            cwidths = np.random.choice(_widths[:-1], sum(cdepth), replace=True)
+            cksizes = np.random.choice(_ksizes[:-1], sum(cdepth), replace=True)
+
+            # Concatenate to add the final sampled model
+            sampled_depths = np.concatenate([free_depths, cdepth])
+            sampled_widths = np.concatenate([free_widths, cwidths])
+            sampled_ksizes = np.concatenate([free_ksizes, cksizes])
+
+            # Add the scaling direction (depths, widths and ksizes)
+            direction = np.random.choice([0, 1], size=3, replace=True)
 
             # Append the sampled architecture
             samples.append(
                 {
-                    "depths": sampled_depth.tolist(),
+                    "depths": sampled_depths.tolist(),
                     "ksizes": sampled_ksizes.tolist(),
                     "widths": sampled_widths.tolist(),
                     "resolution": int(sampled_resolution),
+                    "direction": direction.tolist(),
                 }
             )
         return samples
@@ -75,6 +100,7 @@ class OFASearchSpace:
         Performs the fix-length encoding to a integer string of a sample.
          - Made some changes for readibility of the encodings ( and to follow
          the paper example ).
+
         @params
         - `sample`: A dict of shape {
             'resolution': int,
@@ -105,6 +131,7 @@ class OFASearchSpace:
             encoding += widths[i * max_depth : (i + 1) * max_depth]
 
         encoding += [self.input_resolutions.index(sample["resolution"])]
+        encoding += sample["direction"]
         return encoding
 
     def decode(self, sample):
@@ -117,6 +144,7 @@ class OFASearchSpace:
 
         `[...block1, ...block2, ..., ...block5, resolution]`
         """
+        NON_DATA_BITS = 4
 
         # Computes the overall size of each block
         max_depth = max(self.block_depths)
@@ -124,19 +152,21 @@ class OFASearchSpace:
 
         # Reconstruct by taking each element in order
         depths, ksizes, widths = [], [], []
-        for i in range(0, len(sample) - 1, encoded_block_size):
+        for i in range(0, len(sample) - NON_DATA_BITS, encoded_block_size):
             n_layers = sample[i]
             depths.append(n_layers)
 
             ksizes.extend(sample[i + 1 : i + 1 + n_layers])
             widths.extend(sample[i + (1 + max_depth) : i + (1 + max_depth) + n_layers])
 
-        resolution = self.input_resolutions[sample[-1]]
+        resolution = self.input_resolutions[sample[-NON_DATA_BITS]]
+        direction = sample[-(NON_DATA_BITS - 1) :]
         return {
             "depths": depths,
             "ksizes": ksizes,
             "widths": widths,
             "resolution": resolution,
+            "direction": direction,
         }
 
     def initialise(self, n_samples):
@@ -191,3 +221,57 @@ class OFASearchSpace:
                 position += 1
             padded_values += [0] * (max(self.block_depths) - d)
         return padded_values
+
+    def apply_scaling(self, base_sample, direction):
+        """
+        Applies the scaling direction to the base model.
+        Note: Only from the architectural side (weights are handled later).
+        """
+        scaled_depths, scaled_ksizes, scaled_widths = [], [], []
+
+        # Order of the encoded direction
+        ddir, wdir, kdir = direction
+
+        _pos = 0
+        for depth in base_sample["depths"]:
+            base_ksizes = base_sample["ksizes"][_pos : _pos + depth]
+            base_widths = base_sample["widths"][_pos : _pos + depth]
+
+            # Get in the indexing space for the scaling
+            depth_idx = self.block_depths.index(depth)
+            ksizes_idxs = [self.block_ksizes.index(k) for k in base_ksizes]
+            widths_idxs = [self.block_widths.index(w) for w in base_widths]
+
+            # Add the scaling in the indexing space
+            scaled_depth_idx = min(depth_idx + ddir, len(self.block_depths) - 1)
+            scaled_ksizes_idxs = [
+                min(k + kdir, len(self.block_ksizes) - 1) for k in ksizes_idxs
+            ]
+            scaled_widhts_idxs = [
+                min(w + wdir, len(self.block_widths) - 1) for w in widths_idxs
+            ]
+
+            # Compute the final scaled values
+            _scaled_depth = self.block_depths[scaled_depth_idx]
+            _scaled_ksizes = [self.block_ksizes[k] for k in scaled_ksizes_idxs]
+            _scaled_widths = [self.block_widths[w] for w in scaled_widhts_idxs]
+
+            # Add the new parameters if needed
+            new_layers = _scaled_depth - depth
+            _scaled_ksizes.extend([self.block_ksizes[0]] * new_layers)
+            _scaled_widths.extend([self.block_widths[0]] * new_layers)
+
+            # Store new values
+            scaled_depths.append(_scaled_depth)
+            scaled_ksizes.extend(_scaled_ksizes)
+            scaled_widths.extend(_scaled_widths)
+
+            _pos += depth
+
+        # Convert back to values
+        return {
+            "depths": scaled_depths,
+            "ksizes": scaled_ksizes,
+            "widths": scaled_widths,
+            "resolution": base_sample["resolution"],
+        }

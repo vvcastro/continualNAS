@@ -1,7 +1,7 @@
 from _configs import CIFAR10_DATA_DIR, OFA_MODEL_PATH
 from src.search_space.ofa_space import OFASearchSpace
 
-from src.training.model_trainer import OFAModelTrainer
+from src.training.trainers import OFAModelTrainer
 from src.training.metrics import binary_accuracy
 from src.training.evaluator import OFAEvaluator
 from src.training.utils import SAM
